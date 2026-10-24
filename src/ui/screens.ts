@@ -1,4 +1,4 @@
-import type { GameSnapshot } from '../sim/types';
+import type { GameSnapshot, MatchMode } from '../sim/types';
 import type { NetworkClient } from '../net/NetworkClient';
 import { COLOR } from '../render/theme';
 
@@ -14,7 +14,7 @@ export function mountApp(root: HTMLElement): UiHandles {
   root.innerHTML = `
     <div id="screen-home" class="screen active">
       <h1 class="lobby-title">BombCars</h1>
-      <p class="lobby-sub">Bomberman × Super Cars — last survivor wins. Local loopback demo.</p>
+      <p class="lobby-sub">Top-down arcade racers + bombs. Blow crates, grab power-ups, survive or race to Finish.</p>
       <div class="row">
         <button class="btn" id="btn-create" type="button">Create Room</button>
       </div>
@@ -22,12 +22,17 @@ export function mountApp(root: HTMLElement): UiHandles {
         <input id="join-code" class="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" />
         <button class="btn btn-ghost" id="btn-join" type="button">Join</button>
       </div>
-      <p class="hint">Codes are uppercase stubs — no server yet.</p>
+      <p class="hint">WASD to drive · Space to bomb · clear soft crates with blasts</p>
     </div>
 
     <div id="screen-room" class="screen">
       <h1 class="lobby-title sm">Room</h1>
       <p class="room-code">CODE <strong id="room-code-label">----</strong></p>
+      <div class="mode-row" id="mode-row">
+        <button class="mode-pill active" data-mode="survivor" type="button">Survivor</button>
+        <button class="mode-pill" data-mode="race" type="button">Race</button>
+      </div>
+      <p class="hint" id="mode-hint">Last car standing wins. Bombs destroy soft crates.</p>
       <ul id="roster" class="roster"></ul>
       <p id="solo-note" class="hint"></p>
       <div class="row">
@@ -80,6 +85,13 @@ export function wireUi(net: NetworkClient, handles: UiHandles): void {
   root.querySelector('#btn-leave-room')!.addEventListener('click', () => {
     net.send({ type: 'leave_to_home' });
   });
+
+  root.querySelectorAll<HTMLButtonElement>('.mode-pill').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode as MatchMode;
+      net.send({ type: 'set_mode', mode });
+    });
+  });
 }
 
 export function syncScreens(snap: GameSnapshot, root: HTMLElement): void {
@@ -110,6 +122,15 @@ export function syncScreens(snap: GameSnapshot, root: HTMLElement): void {
     const readyBtn = root.querySelector('#btn-ready')!;
     const me = snap.cars.find((c) => c.id === snap.localPlayerId);
     readyBtn.textContent = me?.ready ? 'Unready' : 'Ready';
+
+    root.querySelectorAll<HTMLButtonElement>('.mode-pill').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === snap.mode);
+    });
+    const hint = root.querySelector('#mode-hint')!;
+    hint.textContent =
+      snap.mode === 'race'
+        ? 'Hit CP1 → CP2 → CP3 → Finish first while alive. Bombs still clear crates.'
+        : 'Last car standing wins. Bombs destroy soft crates.';
   }
 }
 
@@ -122,11 +143,16 @@ export function renderHud(snap: GameSnapshot, hud: HTMLElement): void {
     })
     .join('');
 
+  const raceBit =
+    snap.mode === 'race'
+      ? `<span>Next <strong>CP${Math.min(3, (me?.nextCp ?? 0) + 1)}${(me?.nextCp ?? 0) >= 3 ? ' Finish' : ''}</strong></span>`
+      : `<span class="portraits">${portraits} <strong>${snap.aliveCount}</strong> alive</span>`;
+
   hud.innerHTML = `
-    <span class="portraits">${portraits} <strong>${snap.aliveCount}</strong> alive</span>
+    ${raceBit}
     <span>Bombs <strong>${me?.bombsLeft ?? 0}/${me?.maxBombs ?? 1}</strong></span>
     <span>Range <strong>${me?.blastRange ?? 2}</strong></span>
-    <span>Speed <strong>×${1 + (me?.speedLevel ?? 0)}</strong></span>
+    <span>Speed <strong>×${(1 + (me?.speedLevel ?? 0) * 0.35).toFixed(2)}</strong></span>
   `;
 }
 
@@ -145,7 +171,8 @@ export function renderOverlay(snap: GameSnapshot, el: HTMLElement, net: NetworkC
   if (snap.phase === 'countdown') {
     const left = Math.max(0, Math.ceil((snap.countdownEndsAt - snap.timeMs) / 1000));
     el.classList.add('active');
-    el.innerHTML = `<h2 style="color:${COLOR.accent}">${left || 'GO'}</h2>`;
+    el.innerHTML = `<h2 style="color:${COLOR.accent}">${left || 'GO'}</h2>
+      <p style="color:${COLOR.ink};opacity:.8;margin:0">${snap.mode === 'race' ? 'RACE' : 'SURVIVOR'}</p>`;
     return;
   }
   if (snap.phase === 'ended') {

@@ -1,5 +1,5 @@
 import { CAR_COLLISION_H, CAR_COLLISION_W, COLOR, COLS, ROWS, TILE, BLAST_HOLD_MS } from '../render/theme';
-import { createArenaTiles, inBounds, SPAWN_TILES, tileIndex } from './map';
+import { createArenaTiles, inBounds, RACE_CHECKPOINTS, SPAWN_TILES, tileIndex } from './map';
 import type {
   AppPhase,
   BombState,
@@ -8,6 +8,7 @@ import type {
   ExplosionState,
   GameSnapshot,
   InputFrame,
+  MatchMode,
   PickupKind,
   PickupState,
   TileKind,
@@ -15,16 +16,16 @@ import type {
 } from './types';
 
 const BOMB_FUSE_MS = 2000;
-const BOMB_COOLDOWN_MS = 280;
+const BOMB_COOLDOWN_MS = 220;
 const DEFAULT_RANGE = 2;
 const MAX_RANGE = 5;
 const MAX_BOMBS_CAP = 3;
-const MAX_SPEED_LEVEL = 2; // ×3 with base
-const BASE_SPEED = 165;
-const ACCEL = 1400;
-const FRICTION = 10;
+const MAX_SPEED_LEVEL = 2;
+const BASE_SPEED = 220;
+const ACCEL = 2200;
+const FRICTION = 8;
 const COUNTDOWN_MS = 3000;
-const PICKUP_CHANCE = 0.35;
+const PICKUP_CHANCE = 0.4;
 
 const emptyInput = (): InputFrame => ({
   up: false,
@@ -43,6 +44,7 @@ function roomCode(): string {
 
 export class GameSim {
   private phase: AppPhase = 'home';
+  private mode: MatchMode = 'survivor';
   private tick = 0;
   private timeMs = 0;
   private countdownEndsAt = 0;
@@ -69,6 +71,7 @@ export class GameSim {
     const aliveCount = this.cars.filter((c) => c.alive).length;
     return {
       phase: this.phase,
+      mode: this.mode,
       tick: this.tick,
       timeMs: this.timeMs,
       countdownEndsAt: this.countdownEndsAt,
@@ -83,6 +86,7 @@ export class GameSim {
         cells: e.cells.map((cell) => ({ ...cell })),
       })),
       pickups: this.pickups.map((p) => ({ ...p })),
+      checkpoints: this.mode === 'race' ? RACE_CHECKPOINTS.map((c) => ({ ...c })) : [],
       localPlayerId: this.localPlayerId,
       aliveCount,
       winnerId: this.winnerId,
@@ -107,12 +111,15 @@ export class GameSim {
         this.enterRoom(code);
         break;
       }
+      case 'set_mode':
+        if (this.phase !== 'room') return;
+        this.mode = cmd.mode;
+        break;
       case 'set_ready':
         if (this.phase !== 'room') return;
         {
           const me = this.cars.find((c) => c.id === this.localPlayerId);
           if (me) me.ready = cmd.ready;
-          // Loopback bot mirrors ready when human is ready
           for (const c of this.cars) {
             if (!c.human) c.ready = cmd.ready;
           }
@@ -158,6 +165,7 @@ export class GameSim {
         this.stepBot(car, dt / 1000);
       }
       this.tryCollectPickup(car);
+      if (this.mode === 'race') this.tryRaceProgress(car);
     }
 
     this.updateBombs();
@@ -167,6 +175,7 @@ export class GameSim {
 
   private resetHome(): void {
     this.phase = 'home';
+    this.mode = 'survivor';
     this.cars = [];
     this.bombs = [];
     this.explosions = [];
@@ -185,7 +194,7 @@ export class GameSim {
     this.roomCodeStr = code;
     this.message = undefined;
     this.soloNote =
-      'Loopback demo: a ready bot joins so last-survivor is testable. Real netcode later.';
+      'Demo: BOT joins so you can fight / race. Bombs clear soft crates — clear a path or go for the finish.';
     this.winnerId = undefined;
     this.winnerName = undefined;
     this.cars = [
@@ -216,8 +225,9 @@ export class GameSim {
       maxBombs: 1,
       bombsLeft: 1,
       bombCooldownUntil: 0,
-      ready: !human, // bot pre-ready in loopback once human readies (set in set_ready)
+      ready: !human,
       color: COLOR.cars[slot] ?? COLOR.cars[0],
+      nextCp: 0,
     };
   }
 
@@ -232,7 +242,6 @@ export class GameSim {
       this.message = 'Need ≥2 players (bot joins in loopback)';
       return;
     }
-    // Ensure everyone ready for solo-demo start button
     for (const c of this.cars) c.ready = true;
     this.phase = 'countdown';
     this.countdownEndsAt = this.timeMs + COUNTDOWN_MS;
@@ -264,15 +273,15 @@ export class GameSim {
       car.maxBombs = 1;
       car.bombsLeft = 1;
       car.bombCooldownUntil = 0;
+      car.nextCp = 0;
       car.angle = car.slot === 0 || car.slot === 2 ? 0 : Math.PI;
     }
   }
 
   private maxSpeed(car: CarState): number {
-    return BASE_SPEED * (1 + car.speedLevel); // ×1..×3
+    return BASE_SPEED * (1 + car.speedLevel * 0.35);
   }
 
-  /** Arcade snappy 4-way on grid lanes — tile-readable, light inertia. */
   private driveCar(car: CarState, input: InputFrame, dt: number): void {
     let ix = 0;
     let iy = 0;
@@ -281,7 +290,6 @@ export class GameSim {
     if (input.up) iy -= 1;
     if (input.down) iy += 1;
 
-    // Prefer one axis when both pressed (snappy lane feel)
     if (ix !== 0 && iy !== 0) {
       if (Math.abs(car.vx) >= Math.abs(car.vy)) iy = 0;
       else ix = 0;
@@ -304,13 +312,12 @@ export class GameSim {
       car.vy = (car.vy / sp) * maxSp;
     }
 
-    // Soft lane assist: nudge toward tile center on free axis
     if (ix !== 0 && iy === 0) {
       const cy = Math.floor(car.y / TILE) * TILE + TILE / 2;
-      car.y += (cy - car.y) * Math.min(1, dt * 12);
+      car.y += (cy - car.y) * Math.min(1, dt * 14);
     } else if (iy !== 0 && ix === 0) {
       const cx = Math.floor(car.x / TILE) * TILE + TILE / 2;
-      car.x += (cx - car.x) * Math.min(1, dt * 12);
+      car.x += (cx - car.x) * Math.min(1, dt * 14);
     }
 
     this.moveAxis(car, car.vx * dt, 0);
@@ -349,7 +356,6 @@ export class GameSim {
       }
     }
 
-    // Soft-drop: bombs block after you leave the tile; allow overlap if still on plant tile briefly
     for (const b of this.bombs) {
       if (b.ownerId === selfId) {
         const oc = Math.floor(x / TILE);
@@ -387,10 +393,8 @@ export class GameSim {
     car.bombCooldownUntil = this.timeMs + BOMB_COOLDOWN_MS;
   }
 
-  /** Idle-ish bot: wander lanes, drop bomb occasionally if path clear. */
   private stepBot(car: CarState, dt: number): void {
     const input = emptyInput();
-    // Prefer current heading; occasionally turn at tile centers
     const onCenter =
       Math.abs((car.x % TILE) - TILE / 2) < 6 && Math.abs((car.y % TILE) - TILE / 2) < 6;
 
@@ -407,11 +411,21 @@ export class GameSim {
     else if (a > 0) facing = 'down';
     else facing = 'up';
 
-    if (onCenter && Math.random() < 0.08) {
+    // Race: steer toward next checkpoint
+    if (this.mode === 'race') {
+      const cp = RACE_CHECKPOINTS[car.nextCp];
+      if (cp) {
+        const tx = cp.col * TILE + TILE / 2;
+        const ty = cp.row * TILE + TILE / 2;
+        const dx = tx - car.x;
+        const dy = ty - car.y;
+        if (Math.abs(dx) > Math.abs(dy)) facing = dx > 0 ? 'right' : 'left';
+        else facing = dy > 0 ? 'down' : 'up';
+      }
+    } else if (onCenter && Math.random() < 0.1) {
       facing = dirs[(Math.random() * 4) | 0]!;
     }
 
-    // If blocked ahead, pick another dir
     const probe = { ...car };
     const tryDir = (d: (typeof dirs)[number]) => {
       const fake = emptyInput();
@@ -434,8 +448,7 @@ export class GameSim {
       }
     }
     input[facing] = true;
-
-    if (Math.random() < 0.012 && car.bombsLeft > 0) input.bomb = true;
+    if (Math.random() < 0.02 && car.bombsLeft > 0) input.bomb = true;
 
     this.driveCar(car, input, dt);
     this.tryPlantBomb(car, input);
@@ -454,6 +467,23 @@ export class GameSim {
     if (p.kind === 'bomb') {
       car.maxBombs = Math.min(MAX_BOMBS_CAP, car.maxBombs + 1);
       car.bombsLeft = Math.min(car.maxBombs, car.bombsLeft + 1);
+    }
+  }
+
+  private tryRaceProgress(car: CarState): void {
+    const cp = RACE_CHECKPOINTS[car.nextCp];
+    if (!cp) return;
+    const col = Math.floor(car.x / TILE);
+    const row = Math.floor(car.y / TILE);
+    if (col !== cp.col || row !== cp.row) return;
+    car.nextCp += 1;
+    if (car.nextCp < RACE_CHECKPOINTS.length) {
+      this.pushToast(`${car.name} → CP${car.nextCp}`);
+    } else {
+      this.phase = 'ended';
+      this.winnerId = car.id;
+      this.winnerName = car.name;
+      this.message = `${car.name} wins the race!`;
     }
   }
 
@@ -492,7 +522,7 @@ export class GameSim {
       id: `e${this.nextExplosionId++}`,
       cells,
       startedAt: this.timeMs,
-      durationMs: BLAST_HOLD_MS,
+      durationMs: BLAST_HOLD_MS + 80,
     });
 
     const chained = this.bombs.filter((b) =>
@@ -503,7 +533,6 @@ export class GameSim {
       for (const b of chained) this.detonate(b);
     }
 
-    // Friendly fire on; no respawn
     for (const car of this.cars) {
       if (!car.alive) continue;
       const cc = Math.floor(car.x / TILE);
@@ -536,7 +565,24 @@ export class GameSim {
   }
 
   private checkWin(): void {
+    if (this.phase !== 'playing') return;
     const alive = this.cars.filter((c) => c.alive);
+
+    if (this.mode === 'race') {
+      if (alive.length === 1) {
+        this.phase = 'ended';
+        this.winnerId = alive[0]!.id;
+        this.winnerName = alive[0]!.name;
+        this.message = `${alive[0]!.name} wins the race!`;
+      } else if (alive.length === 0) {
+        this.phase = 'ended';
+        this.winnerId = undefined;
+        this.winnerName = undefined;
+        this.message = 'Draw — all out before Finish';
+      }
+      return;
+    }
+
     if (alive.length <= 1) {
       this.phase = 'ended';
       if (alive.length === 1) {

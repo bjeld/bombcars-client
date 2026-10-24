@@ -1,5 +1,5 @@
 import { COLS, ROWS } from '../render/theme';
-import type { TileKind } from './types';
+import type { CheckpointMarker, TileKind } from './types';
 
 /** Classic Bomberman-ish: hard border + pillar grid, soft blocks, clear corner spawns. */
 export function createArenaTiles(): TileKind[] {
@@ -31,6 +31,12 @@ export function createArenaTiles(): TileKind[] {
     }
   }
 
+  // Keep race route cells open (checkpoints sit on empty floor)
+  for (const cp of RACE_CHECKPOINTS) {
+    const i = tileIndex(cp.col, cp.row);
+    if (tiles[i] === 'soft') tiles[i] = 'empty';
+  }
+
   return tiles;
 }
 
@@ -48,4 +54,12 @@ export const SPAWN_TILES: readonly [number, number][] = [
   [COLS - 2, 1],
   [1, ROWS - 2],
   [COLS - 2, ROWS - 2],
+];
+
+/** CP1 → CP2 → CP3 → Finish (Design race rule). Non-colliding floor overlays. */
+export const RACE_CHECKPOINTS: readonly CheckpointMarker[] = [
+  { id: 'cp1', col: 3, row: 5, label: '1', index: 0 },
+  { id: 'cp2', col: 6, row: 3, label: '2', index: 1 },
+  { id: 'cp3', col: 9, row: 7, label: '3', index: 2 },
+  { id: 'finish', col: 6, row: 5, label: 'F', index: 3 },
 ];

@@ -2,6 +2,8 @@ export type TileKind = 'empty' | 'soft' | 'hard';
 
 export type PickupKind = 'speed' | 'blast' | 'bomb';
 
+export type MatchMode = 'survivor' | 'race';
+
 export interface Vec2 {
   x: number;
   y: number;
@@ -9,7 +11,7 @@ export interface Vec2 {
 
 export interface CarState {
   id: string;
-  slot: number; // 0..3 → P1..P4
+  slot: number;
   name: string;
   human: boolean;
   x: number;
@@ -18,16 +20,15 @@ export interface CarState {
   vy: number;
   angle: number;
   alive: boolean;
-  /** Extra speed tiers collected (0..2 → up to ×3). */
   speedLevel: number;
-  /** Blast range (default 2, cap 5). */
   blastRange: number;
-  /** Max simultaneous bombs (default 1, cap 3). */
   maxBombs: number;
   bombsLeft: number;
   bombCooldownUntil: number;
   ready: boolean;
   color: string;
+  /** Next race checkpoint index 0..3 (Finish). */
+  nextCp: number;
 }
 
 export interface BombState {
@@ -60,6 +61,14 @@ export interface PickupState {
   row: number;
 }
 
+export interface CheckpointMarker {
+  id: string;
+  col: number;
+  row: number;
+  label: string;
+  index: number;
+}
+
 export interface InputFrame {
   up: boolean;
   down: boolean;
@@ -68,7 +77,6 @@ export interface InputFrame {
   bomb: boolean;
 }
 
-/** UI / lobby flow phases. */
 export type AppPhase =
   | 'home'
   | 'room'
@@ -84,6 +92,7 @@ export interface Toast {
 
 export interface GameSnapshot {
   phase: AppPhase;
+  mode: MatchMode;
   tick: number;
   timeMs: number;
   countdownEndsAt: number;
@@ -95,19 +104,20 @@ export interface GameSnapshot {
   bombs: BombState[];
   explosions: ExplosionState[];
   pickups: PickupState[];
+  checkpoints: CheckpointMarker[];
   localPlayerId: string;
   aliveCount: number;
   winnerId?: string;
   winnerName?: string;
   toasts: Toast[];
   message?: string;
-  /** Solo demo note when only one human and a bot. */
   soloNote?: string;
 }
 
 export type ClientCommand =
   | { type: 'create_room' }
   | { type: 'join_room'; code: string }
+  | { type: 'set_mode'; mode: MatchMode }
   | { type: 'set_ready'; ready: boolean }
   | { type: 'start_match' }
   | { type: 'rematch' }
