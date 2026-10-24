@@ -29,10 +29,10 @@ export function mountApp(root: HTMLElement): UiHandles {
       <h1 class="lobby-title sm">Room</h1>
       <p class="room-code">CODE <strong id="room-code-label">----</strong></p>
       <div class="mode-row" id="mode-row">
-        <button class="mode-pill active" data-mode="survivor" type="button">Survivor</button>
-        <button class="mode-pill" data-mode="race" type="button">Race</button>
+        <button class="mode-pill active" data-mode="race" type="button">Race</button>
+        <button class="mode-pill" data-mode="survivor" type="button">Survivor</button>
       </div>
-      <p class="hint" id="mode-hint">Last car standing wins. Bombs destroy soft crates.</p>
+      <p class="hint" id="mode-hint">Hit CP1 → CP2 → CP3 → Finish. Bombs cut race lines.</p>
       <ul id="roster" class="roster"></ul>
       <p id="solo-note" class="hint"></p>
       <div class="row">
@@ -42,14 +42,25 @@ export function mountApp(root: HTMLElement): UiHandles {
       <button class="linkish" id="btn-leave-room" type="button">← Back</button>
     </div>
 
-    <div id="screen-game" class="screen">
+    <div id="screen-game" class="screen game-screen">
       <div class="game-wrap">
         <div id="hud" class="hud"></div>
         <canvas id="game-canvas" width="624" height="528"></canvas>
         <div id="toast" class="toast"></div>
         <div id="overlay" class="overlay"></div>
+        <div id="touch-pad" class="touch-pad">
+          <div class="dpad">
+            <button type="button" data-dir="up" class="pad-btn">▲</button>
+            <div class="dpad-mid">
+              <button type="button" data-dir="left" class="pad-btn">◀</button>
+              <button type="button" data-dir="right" class="pad-btn">▶</button>
+            </div>
+            <button type="button" data-dir="down" class="pad-btn">▼</button>
+          </div>
+          <button type="button" id="btn-bomb" class="bomb-btn">BOMB</button>
+        </div>
       </div>
-      <p class="hint">WASD / Arrows · Space bomb · Esc menu</p>
+      <p class="hint desktop-only">WASD · Space bomb · Esc</p>
     </div>
   `;
 
@@ -58,6 +69,33 @@ export function mountApp(root: HTMLElement): UiHandles {
   const toast = root.querySelector<HTMLElement>('#toast')!;
   const overlay = root.querySelector<HTMLElement>('#overlay')!;
   return { root, canvas, hud, toast, overlay };
+}
+
+export function wireTouch(input: { setTouch: (p: Partial<{up:boolean;down:boolean;left:boolean;right:boolean;bomb:boolean}>) => void }, root: HTMLElement): void {
+  const pad = root.querySelector('#touch-pad');
+  if (!pad) return;
+  const setDir = (dir: string, on: boolean) => {
+    if (dir === 'up') input.setTouch({ up: on });
+    if (dir === 'down') input.setTouch({ down: on });
+    if (dir === 'left') input.setTouch({ left: on });
+    if (dir === 'right') input.setTouch({ right: on });
+  };
+  pad.querySelectorAll<HTMLButtonElement>('.pad-btn').forEach((btn) => {
+    const dir = btn.dataset.dir!;
+    const start = (e: Event) => { e.preventDefault(); setDir(dir, true); };
+    const end = (e: Event) => { e.preventDefault(); setDir(dir, false); };
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointerleave', end);
+    btn.addEventListener('pointercancel', end);
+  });
+  const bomb = pad.querySelector<HTMLButtonElement>('#btn-bomb')!;
+  const bOn = (e: Event) => { e.preventDefault(); input.setTouch({ bomb: true }); };
+  const bOff = (e: Event) => { e.preventDefault(); input.setTouch({ bomb: false }); };
+  bomb.addEventListener('pointerdown', bOn);
+  bomb.addEventListener('pointerup', bOff);
+  bomb.addEventListener('pointerleave', bOff);
+  bomb.addEventListener('pointercancel', bOff);
 }
 
 export function wireUi(net: NetworkClient, handles: UiHandles): void {

@@ -15,15 +15,15 @@ import type {
   Toast,
 } from './types';
 
-const BOMB_FUSE_MS = 2000;
+const BOMB_FUSE_MS = 1500;
 const BOMB_COOLDOWN_MS = 220;
 const DEFAULT_RANGE = 2;
 const MAX_RANGE = 5;
 const MAX_BOMBS_CAP = 3;
 const MAX_SPEED_LEVEL = 2;
-const BASE_SPEED = 220;
-const ACCEL = 2200;
-const FRICTION = 8;
+const BASE_SPEED = 280;
+const ACCEL = 2800;
+const FRICTION = 6;
 const COUNTDOWN_MS = 3000;
 const PICKUP_CHANCE = 0.4;
 
@@ -44,7 +44,7 @@ function roomCode(): string {
 
 export class GameSim {
   private phase: AppPhase = 'home';
-  private mode: MatchMode = 'survivor';
+  private mode: MatchMode = 'race';
   private tick = 0;
   private timeMs = 0;
   private countdownEndsAt = 0;
@@ -175,7 +175,7 @@ export class GameSim {
 
   private resetHome(): void {
     this.phase = 'home';
-    this.mode = 'survivor';
+    this.mode = 'race';
     this.cars = [];
     this.bombs = [];
     this.explosions = [];

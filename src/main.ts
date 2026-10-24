@@ -8,6 +8,7 @@ import {
   renderOverlay,
   renderToast,
   syncScreens,
+  wireTouch,
   wireUi,
 } from './ui/screens';
 
@@ -21,6 +22,7 @@ async function boot(): Promise<void> {
   const handles = mountApp(app);
   wireUi(net, handles);
   const input = new Input();
+  wireTouch(input, handles.root);
   const renderer = new Renderer(handles.canvas);
 
   let last = performance.now();

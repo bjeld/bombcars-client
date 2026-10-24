@@ -1,9 +1,10 @@
 import type { InputFrame } from '../sim/types';
 
-/** Keyboard: WASD / arrows move, Space bomb, Esc menu (handled by app). */
+/** Keyboard + on-screen touch pad (mobile). */
 export class Input {
   private keys = new Set<string>();
   private escPressed = false;
+  private touch = { up: false, down: false, left: false, right: false, bomb: false };
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
@@ -17,7 +18,10 @@ export class Input {
     window.removeEventListener('blur', this.onBlur);
   }
 
-  /** Consume Esc edge (menu). */
+  setTouch(partial: Partial<typeof this.touch>): void {
+    Object.assign(this.touch, partial);
+  }
+
   consumeEsc(): boolean {
     const v = this.escPressed;
     this.escPressed = false;
@@ -26,11 +30,11 @@ export class Input {
 
   frame(): InputFrame {
     return {
-      up: this.has('ArrowUp', 'KeyW'),
-      down: this.has('ArrowDown', 'KeyS'),
-      left: this.has('ArrowLeft', 'KeyA'),
-      right: this.has('ArrowRight', 'KeyD'),
-      bomb: this.has('Space'),
+      up: this.has('ArrowUp', 'KeyW') || this.touch.up,
+      down: this.has('ArrowDown', 'KeyS') || this.touch.down,
+      left: this.has('ArrowLeft', 'KeyA') || this.touch.left,
+      right: this.has('ArrowRight', 'KeyD') || this.touch.right,
+      bomb: this.has('Space') || this.touch.bomb,
     };
   }
 

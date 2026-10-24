@@ -295,3 +295,74 @@ body,
   color: #1A1F2E;
   box-shadow: 0 0 18px rgba(255,92,138,0.45);
 }
+
+
+.game-screen {
+  padding: 0.4rem !important;
+  gap: 0.4rem !important;
+  justify-content: flex-start !important;
+}
+.game-wrap {
+  position: relative;
+  width: min(100vw - 0.5rem, 960px);
+  max-width: 100%;
+}
+#game-canvas {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(255, 92, 138, 0.25);
+  touch-action: none;
+}
+.touch-pad {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.4rem;
+  padding: 0 0.6rem;
+  pointer-events: none;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+@media (pointer: coarse), (max-width: 900px) {
+  .touch-pad { display: flex; }
+  .desktop-only { display: none; }
+}
+.dpad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  pointer-events: auto;
+}
+.dpad-mid {
+  display: flex;
+  gap: 2.2rem;
+}
+.pad-btn, .bomb-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 2px solid rgba(244,241,234,0.35);
+  background: rgba(26,31,46,0.72);
+  color: #F4F1EA;
+  font-size: 1.2rem;
+  font-weight: 800;
+  backdrop-filter: blur(6px);
+  touch-action: none;
+  user-select: none;
+}
+.bomb-btn {
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  background: rgba(255,92,138,0.85);
+  border-color: #FF5C8A;
+  box-shadow: 0 0 24px rgba(255,92,138,0.55);
+  pointer-events: auto;
+}
+.pad-btn:active, .bomb-btn:active {
+  transform: scale(0.94);
+}
